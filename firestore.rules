@@ -16,7 +16,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email in ['phamthikhanhhuyen281@gmail.com', 'cl8593834@gmail.com'] ||
+        request.auth.token.email in ['phamthikhanhuyen201@gmail.com', 'phamthikhanhhuyen281@gmail.com', 'cl8593834@gmail.com'] ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -80,6 +80,29 @@ service cloud.firestore {
     match /research_samples/{sampleId} {
       allow read: if isResearcher();
       allow write: if isResearcher();
+    }
+
+    // Role upgrade requests
+    match /role_requests/{requestId} {
+      allow get: if isSignedIn() && isValidId(requestId) && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+        isValidId(requestId) &&
+        request.resource.data.id == requestId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.requestedRole in ['researcher', 'administrator'] &&
+        request.resource.data.organization is string &&
+        request.resource.data.organization.size() > 0 &&
+        request.resource.data.organization.size() <= 300 &&
+        request.resource.data.reason is string &&
+        request.resource.data.reason.size() > 0 &&
+        request.resource.data.reason.size() <= 2000 &&
+        request.resource.data.status == 'pending';
+      allow update: if isAdmin() &&
+        isValidId(requestId) &&
+        request.resource.data.status in ['pending', 'approved', 'rejected'] &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin() && isValidId(requestId);
     }
   }
 }

@@ -76,6 +76,8 @@ export const ResearchAdminDashboard: React.FC = () => {
   const [reviewingDiagnosis, setReviewingDiagnosis] = useState<DiagnosisHistoryItem | null>(null);
   const [expertNoteInput, setExpertNoteInput] = useState<string>('');
   const [expertStatusInput, setExpertStatusInput] = useState<'unverified' | 'expert_verified' | 'corrected'>('expert_verified');
+  const [sampleFormError, setSampleFormError] = useState<string | null>(null);
+  const [reviewFormError, setReviewFormError] = useState<string | null>(null);
 
   // Benchmark comparison mode
   const [benchmarkMode, setBenchmarkMode] = useState<'with_knowledge' | 'image_only' | 'local_field'>('with_knowledge');
@@ -103,8 +105,9 @@ export const ResearchAdminDashboard: React.FC = () => {
 
   const handleSaveNewSample = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSampleFormError(null);
     if (!newSample.sampleId || !newSample.diseaseLabel) {
-      alert('Vui lòng nhập Mã mẫu và Nhãn bệnh chuẩn đối chứng.');
+      setSampleFormError('Vui lòng nhập Mã mẫu và Nhãn bệnh chuẩn đối chứng.');
       return;
     }
 
@@ -129,7 +132,7 @@ export const ResearchAdminDashboard: React.FC = () => {
       setIsAddSampleOpen(false);
       await loadAllData();
     } catch (err: any) {
-      alert('Lỗi lưu mẫu nghiên cứu: ' + err.message);
+      setSampleFormError('Lỗi lưu mẫu nghiên cứu: ' + (err.message || 'Không xác định'));
     }
   };
 
@@ -147,12 +150,13 @@ export const ResearchAdminDashboard: React.FC = () => {
 
   const handleSaveExpertReview = async () => {
     if (!reviewingDiagnosis) return;
+    setReviewFormError(null);
     try {
       await updateDiagnosisVerification(reviewingDiagnosis.id, expertStatusInput, expertNoteInput);
       setReviewingDiagnosis(null);
       await loadAllData();
     } catch (err: any) {
-      alert('Lỗi cập nhật thẩm định: ' + err.message);
+      setReviewFormError('Lỗi cập nhật thẩm định: ' + (err.message || 'Không xác định'));
     }
   };
 
@@ -665,12 +669,22 @@ export const ResearchAdminDashboard: React.FC = () => {
               <h3 className="font-bold text-sm text-stone-900">Thêm Mẫu Thực Nghiệm Đối Chứng</h3>
               <button
                 type="button"
-                onClick={() => setIsAddSampleOpen(false)}
+                onClick={() => {
+                  setSampleFormError(null);
+                  setIsAddSampleOpen(false);
+                }}
                 className="p-1 text-stone-400 hover:text-stone-700"
               >
                 ✕
               </button>
             </div>
+
+            {sampleFormError && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-700 shrink-0" />
+                <span>{sampleFormError}</span>
+              </div>
+            )}
 
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
@@ -797,12 +811,22 @@ export const ResearchAdminDashboard: React.FC = () => {
             <div className="flex items-center justify-between border-b border-stone-200 pb-3">
               <h3 className="font-bold text-sm text-stone-900">Thẩm Định Mẫu Chẩn Đoán Thực Địa</h3>
               <button
-                onClick={() => setReviewingDiagnosis(null)}
+                onClick={() => {
+                  setReviewFormError(null);
+                  setReviewingDiagnosis(null);
+                }}
                 className="p-1 text-stone-400 hover:text-stone-700"
               >
                 ✕
               </button>
             </div>
+
+            {reviewFormError && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-700 shrink-0" />
+                <span>{reviewFormError}</span>
+              </div>
+            )}
 
             <div className="space-y-3">
               <div className="h-40 rounded-xl overflow-hidden bg-stone-900">

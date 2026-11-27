@@ -10,11 +10,16 @@ import {
   ShieldAlert,
   HelpCircle,
   ExternalLink,
+  X,
+  Plus,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
-import { CropType, PlantPart, DiagnosisResult, ConfidenceLevel } from '../../types';
+import { CropType, PlantPart, DiagnosisResult, ConfidenceLevel, FollowUpAnswer } from '../../types';
 import { runServerDiagnosis, saveDiagnosisRecord } from '../../services/diagnosisService';
 import { useAuth } from '../../context/AuthContext';
 import { DEFAULT_DISEASES } from '../../data/defaultDiseases';
+import { isSpeechSupported, speakVietnamese, stopSpeaking } from '../../utils/speech';
 
 interface PlantScannerProps {
   initialCrop?: CropType;
@@ -33,6 +38,8 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
   const [selectedPart, setSelectedPart] = useState<PlantPart>('leaf');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>('image/jpeg');
+  const [secondaryImagePreview, setSecondaryImagePreview] = useState<string | null>(null);
+  const [secondaryMimeType, setSecondaryMimeType] = useState<string>('image/jpeg');
 
   // Camera capture modal state
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
@@ -41,9 +48,15 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
 
   // Analysis states
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [isRefining, setIsRefining] = useState<boolean>(false);
   const [scanStepMessage, setScanStepMessage] = useState<string>('');
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [result, setResult] = useState<DiagnosisResult | null>(null);
+  const [followUpSelections, setFollowUpSelections] = useState<Record<string, string>>({});
+  const [hasRefinedWithAnswers, setHasRefinedWithAnswers] = useState<boolean>(false);
+  const [showCorrectionBox, setShowCorrectionBox] = useState<boolean>(false);
+  const [userObservationText, setUserObservationText] = useState<string>('');
+  const [isRecheckingWithNote, setIsRecheckingWithNote] = useState<boolean>(false);
   const [isSaved, setIsSaved] = useState<boolean>(false);
   const [imageFileName, setImageFileName] = useState<string>('');
   const [sourceSampleCrop, setSourceSampleCrop] = useState<CropType | null>(null);
@@ -60,13 +73,21 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
   } | null>(null);
 
   const [showTips, setShowTips] = useState<boolean>(false);
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [isLoadingSpeech, setIsLoadingSpeech] = useState<boolean>(false);
+  const [speechError, setSpeechError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const secondaryFileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraCaptureInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setSelectedCrop(initialCrop);
   }, [initialCrop]);
+
+  useEffect(() => {
+    return () => stopSpeaking();
+  }, []);
 
   const cropOptions: { id: CropType; label: string; icon: string }[] = [
     { id: 'citrus', label: 'Cây Cam, Bưởi', icon: '🍊' },
@@ -74,18 +95,70 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
     { id: 'peanut', label: 'Cây Lạc (Đậu)', icon: '🥜' },
   ];
 
-  const partOptions: { id: PlantPart; label: string }[] = [
-    { id: 'leaf', label: 'Lá cây' },
-    { id: 'stem', label: 'Thân / Cành' },
-    { id: 'fruit', label: 'Quả / Củ' },
-    { id: 'other', label: 'Toàn cây' },
-  ];
+  const getPartOptions = (crop: CropType): { id: PlantPart; label: string; hint: string }[] => {
+    if (crop === 'rice') {
+      return [
+        { id: 'leaf', label: 'Lá lúa', hint: 'Ưu tiên soi đạo ôn lá, bạc lá, khô vằn trên lá' },
+        { id: 'stem', label: 'Thân / Bẹ lúa', hint: 'Ưu tiên soi khô vằn, rầy nâu bám bẹ, thối thân' },
+        { id: 'fruit', label: 'Bông / Hạt lúa', hint: 'Ưu tiên soi đạo ôn cổ bông, lem lép hạt, đen hạt' },
+        { id: 'other', label: 'Cả khóm lúa', hint: 'Xem tổng thể cả khóm, độ vàng lùn, cháy rầy' },
+      ];
+    }
+    if (crop === 'peanut') {
+      return [
+        { id: 'leaf', label: 'Lá lạc', hint: 'Ưu tiên soi đốm nâu, đốm đen, gỉ sắt trên lá lạc' },
+        { id: 'stem', label: 'Thân / Cổ rễ', hint: 'Ưu tiên soi héo xanh vi khuẩn, thối gốc mốc trắng' },
+        { id: 'fruit', label: 'Củ / Quả lạc', hint: 'Ưu tiên soi thối củ, nấm mốc củ sau nhổ lên' },
+        { id: 'other', label: 'Toàn cây', hint: 'Xem tổng thể khóm lạc héo rũ hay còi cọc' },
+      ];
+    }
+    return [
+      { id: 'leaf', label: 'Lá cây', hint: 'Ưu tiên soi vàng lá gân xanh (HLB), loét, sẹo lá, sâu vẽ bùa' },
+      { id: 'stem', label: 'Thân / Cành', hint: 'Ưu tiên soi chảy gôm, nứt thân, rệp sáp, nấm hồng' },
+      { id: 'fruit', label: 'Quả', hint: 'Ưu tiên soi loét quả, ghẻ sẹo, ruồi đục quả, thối nhũn' },
+      { id: 'other', label: 'Toàn cây', hint: 'Xem tổng thể tán cây vàng lá, thối rễ, suy cây' },
+    ];
+  };
+
+  const partOptions = getPartOptions(selectedCrop);
 
   const getCropLabel = (crop: CropType) =>
     crop === 'citrus' ? 'Cây Cam, Bưởi' : crop === 'rice' ? 'Cây Lúa' : 'Cây Lạc';
 
   const getPartLabel = (part: PlantPart) =>
-    partOptions.find((p) => p.id === part)?.label || 'Lá cây';
+    partOptions.find((p) => p.id === part)?.label || partOptions[0].label;
+
+  const selectedPartHint =
+    partOptions.find((p) => p.id === selectedPart)?.hint || partOptions[0].hint;
+
+  const compressDataUrl = (dataUrl: string, maxDim = 1280, quality = 0.84): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        if (!w || !h) {
+          resolve(dataUrl);
+          return;
+        }
+        const scale = Math.min(1, maxDim / Math.max(w, h));
+        const targetW = Math.max(1, Math.round(w * scale));
+        const targetH = Math.max(1, Math.round(h * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -102,17 +175,53 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
       return;
     }
 
+    stopSpeaking();
+    setIsSpeaking(false);
     setAnalysisError(null);
     setImageFileName(file.name);
     setSourceSampleCrop(null);
-    setMimeType(file.type);
     setResult(null);
+    setFollowUpSelections({});
+    setHasRefinedWithAnswers(false);
     setIsSaved(false);
     setRefImgError(false);
 
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string);
+    reader.onloadend = async () => {
+      const raw = reader.result as string;
+      const compressed = await compressDataUrl(raw, 1280, 0.84);
+      setMimeType('image/jpeg');
+      setImagePreview(compressed);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSecondaryFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type.toLowerCase())) {
+      setAnalysisError('Bác vui lòng chọn ảnh góc thứ 2 định dạng JPG hoặc PNG nhé.');
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      setAnalysisError('Ảnh góc thứ 2 hơi lớn (trên 15MB). Bác chọn ảnh nhẹ hơn nhé.');
+      return;
+    }
+
+    setAnalysisError(null);
+    setResult(null);
+    setFollowUpSelections({});
+    setHasRefinedWithAnswers(false);
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const raw = reader.result as string;
+      const compressed = await compressDataUrl(raw, 1280, 0.84);
+      setSecondaryMimeType('image/jpeg');
+      setSecondaryImagePreview(compressed);
     };
     reader.readAsDataURL(file);
   };
@@ -141,13 +250,18 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
 
   const captureCameraSnapshot = () => {
     if (!videoRef.current) return;
+    const rawW = videoRef.current.videoWidth || 640;
+    const rawH = videoRef.current.videoHeight || 480;
+    const scale = Math.min(1, 1280 / Math.max(rawW, rawH));
     const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
+    canvas.width = Math.max(1, Math.round(rawW * scale));
+    canvas.height = Math.max(1, Math.round(rawH * scale));
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      stopSpeaking();
+      setIsSpeaking(false);
       setImagePreview(dataUrl);
       setImageFileName('camera_snapshot.jpg');
       setSourceSampleCrop(null);
@@ -428,15 +542,17 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
 
   const handleRunDiagnosis = async () => {
     if (!imagePreview) {
-      setAnalysisError('Bác vui lòng chụp ảnh hoặc chọn ảnh lá cây trước nhé.');
+      setAnalysisError(`Bác vui lòng chụp ảnh hoặc chọn ảnh ${getPartLabel(selectedPart).toLowerCase()} trước nhé.`);
       return;
     }
 
     setIsAnalyzing(true);
     setAnalysisError(null);
     setResult(null);
+    setFollowUpSelections({});
+    setHasRefinedWithAnswers(false);
     setRefImgError(false);
-    setScanStepMessage('Bác sĩ AI đang kiểm tra...');
+    setScanStepMessage(secondaryImagePreview ? 'Bác sĩ AI đang xem cả 2 góc ảnh...' : 'Bác sĩ AI đang kiểm tra...');
 
     try {
       const visualMetrics = await extractVisualMetrics(imagePreview, imageFileName, sourceSampleCrop);
@@ -446,7 +562,13 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
         selectedCrop,
         selectedPart,
         mimeType,
-        visualMetrics
+        visualMetrics,
+        secondaryImagePreview
+          ? {
+              secondaryImageBase64: secondaryImagePreview,
+              secondaryMimeType,
+            }
+          : undefined
       );
 
       setResult(diagnosisResult);
@@ -472,6 +594,102 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
     }
   };
 
+  const handleConfirmFollowUp = async () => {
+    if (!imagePreview || !result?.followUpQuestions?.length) return;
+    const answers: FollowUpAnswer[] = result.followUpQuestions
+      .filter((q) => followUpSelections[q.id])
+      .map((q) => ({
+        question: q.question,
+        answer: followUpSelections[q.id],
+      }));
+
+    if (answers.length === 0) {
+      setAnalysisError('Bác vui lòng bấm chọn ít nhất 1 câu trả lời để Bác sĩ AI chốt bệnh chính xác hơn nhé.');
+      return;
+    }
+
+    setIsRefining(true);
+    setAnalysisError(null);
+
+    try {
+      const visualMetrics = await extractVisualMetrics(imagePreview, imageFileName, sourceSampleCrop);
+      const refinedResult = await runServerDiagnosis(
+        imagePreview,
+        selectedCrop,
+        selectedPart,
+        mimeType,
+        visualMetrics,
+        {
+          secondaryImageBase64: secondaryImagePreview || undefined,
+          secondaryMimeType: secondaryImagePreview ? secondaryMimeType : undefined,
+          followUpAnswers: answers,
+        }
+      );
+      setResult(refinedResult);
+      setHasRefinedWithAnswers(true);
+
+      await saveDiagnosisRecord({
+        userId: user?.uid || 'guest_user',
+        userEmail: user?.email || '',
+        cropType: selectedCrop,
+        plantPart: selectedPart,
+        imageUrl: imagePreview,
+        assessment: refinedResult,
+        suspectedDiseases: refinedResult.possibleDiagnoses.map((d) => d.diseaseName),
+        imageQuality: refinedResult.imageQuality,
+        verificationStatus: 'unverified',
+      });
+    } catch (err: any) {
+      setAnalysisError(err.message || 'Chưa cập nhật được kết quả xác nhận. Bác thử bấm lại nhé.');
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
+  const handleRecheckWithObservation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!imagePreview || !userObservationText.trim()) return;
+
+    setIsRecheckingWithNote(true);
+    setAnalysisError(null);
+
+    try {
+      const visualMetrics = await extractVisualMetrics(imagePreview, imageFileName, sourceSampleCrop);
+      const refinedResult = await runServerDiagnosis(
+        imagePreview,
+        selectedCrop,
+        selectedPart,
+        mimeType,
+        visualMetrics,
+        {
+          secondaryImageBase64: secondaryImagePreview || undefined,
+          secondaryMimeType: secondaryImagePreview ? secondaryMimeType : undefined,
+          userObservation: userObservationText.trim(),
+        }
+      );
+      setResult(refinedResult);
+      setHasRefinedWithAnswers(true);
+      setShowCorrectionBox(false);
+      setUserObservationText('');
+
+      await saveDiagnosisRecord({
+        userId: user?.uid || 'guest_user',
+        userEmail: user?.email || '',
+        cropType: selectedCrop,
+        plantPart: selectedPart,
+        imageUrl: imagePreview,
+        assessment: refinedResult,
+        suspectedDiseases: refinedResult.possibleDiagnoses.map((d) => d.diseaseName),
+        imageQuality: refinedResult.imageQuality,
+        verificationStatus: 'unverified',
+      });
+    } catch (err: any) {
+      setAnalysisError(err.message || 'Chưa kiểm tra lại được. Bác thử lại giúp tôi nhé.');
+    } finally {
+      setIsRecheckingWithNote(false);
+    }
+  };
+
   const handleSwitchCropAndDiagnose = async (newCrop: CropType) => {
     setSelectedCrop(newCrop);
     setSourceSampleCrop(newCrop);
@@ -479,6 +697,8 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
     setIsAnalyzing(true);
     setAnalysisError(null);
     setResult(null);
+    setFollowUpSelections({});
+    setHasRefinedWithAnswers(false);
     setRefImgError(false);
     setScanStepMessage('Bác sĩ AI đang kiểm tra...');
 
@@ -489,7 +709,13 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
         newCrop,
         selectedPart,
         mimeType,
-        visualMetrics
+        visualMetrics,
+        secondaryImagePreview
+          ? {
+              secondaryImageBase64: secondaryImagePreview,
+              secondaryMimeType,
+            }
+          : undefined
       );
       setResult(diagnosisResult);
 
@@ -513,11 +739,70 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
     }
   };
 
+  const handleSwitchPartAndDiagnose = async (newPart: PlantPart) => {
+    setSelectedPart(newPart);
+    if (!imagePreview) return;
+    setIsAnalyzing(true);
+    setAnalysisError(null);
+    setResult(null);
+    setFollowUpSelections({});
+    setHasRefinedWithAnswers(false);
+    setShowCorrectionBox(false);
+    setUserObservationText('');
+    setRefImgError(false);
+    setScanStepMessage('Bác sĩ AI đang kiểm tra lại đúng bộ phận...');
+
+    try {
+      const visualMetrics = await extractVisualMetrics(imagePreview, imageFileName, sourceSampleCrop);
+      const diagnosisResult = await runServerDiagnosis(
+        imagePreview,
+        selectedCrop,
+        newPart,
+        mimeType,
+        visualMetrics,
+        secondaryImagePreview
+          ? {
+              secondaryImageBase64: secondaryImagePreview,
+              secondaryMimeType,
+            }
+          : undefined
+      );
+      setResult(diagnosisResult);
+
+      await saveDiagnosisRecord({
+        userId: user?.uid || 'guest_user',
+        userEmail: user?.email || '',
+        cropType: selectedCrop,
+        plantPart: newPart,
+        imageUrl: imagePreview,
+        assessment: diagnosisResult,
+        suspectedDiseases: diagnosisResult.possibleDiagnoses.map((d) => d.diseaseName),
+        imageQuality: diagnosisResult.imageQuality,
+        verificationStatus: 'unverified',
+      });
+      setIsSaved(true);
+    } catch (err: any) {
+      setAnalysisError(err.message || 'Có lỗi khi chuyển sang kiểm tra bộ phận khác.');
+    } finally {
+      setIsAnalyzing(false);
+      setScanStepMessage('');
+    }
+  };
+
   const resetScanner = () => {
+    stopSpeaking();
+    setIsSpeaking(false);
+    setIsLoadingSpeech(false);
+    setSpeechError(null);
     setImagePreview(null);
+    setSecondaryImagePreview(null);
     setImageFileName('');
     setSourceSampleCrop(null);
     setResult(null);
+    setFollowUpSelections({});
+    setHasRefinedWithAnswers(false);
+    setShowCorrectionBox(false);
+    setUserObservationText('');
     setPreviewQuality(null);
     setAnalysisError(null);
     setIsSaved(false);
@@ -631,22 +916,31 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
         </div>
 
         {/* Unobtrusive 1-row part selector */}
-        <div className="pt-2 border-t border-stone-100 flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-stone-600 mr-1">Chụp bộ phận:</span>
-          {partOptions.map((part) => (
-            <button
-              key={part.id}
-              type="button"
-              onClick={() => setSelectedPart(part.id)}
-              className={`px-3.5 py-2 rounded-xl text-sm font-semibold min-h-[40px] transition-colors cursor-pointer ${
-                selectedPart === part.id
-                  ? 'bg-emerald-700 text-white'
-                  : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
-              }`}
-            >
-              {part.label}
-            </button>
-          ))}
+        <div className="pt-3 border-t border-stone-100 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-stone-600 mr-1">Chụp bộ phận:</span>
+            {partOptions.map((part) => (
+              <button
+                key={part.id}
+                type="button"
+                onClick={() => {
+                  setSelectedPart(part.id);
+                  setResult(null);
+                  setIsSaved(false);
+                }}
+                className={`px-3.5 py-2 rounded-xl text-sm font-semibold min-h-[40px] transition-colors cursor-pointer ${
+                  selectedPart === part.id
+                    ? 'bg-emerald-700 text-white'
+                    : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                }`}
+              >
+                {part.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-emerald-800 bg-emerald-50/70 border border-emerald-100 rounded-xl px-3.5 py-2">
+            <strong>Gợi ý soi ({getPartLabel(selectedPart)}):</strong> {selectedPartHint}.
+          </p>
         </div>
       </section>
 
@@ -660,6 +954,14 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
           type="file"
           ref={fileInputRef}
           onChange={handleFileChange}
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+        />
+
+        <input
+          type="file"
+          ref={secondaryFileInputRef}
+          onChange={handleSecondaryFileChange}
           accept="image/jpeg,image/png,image/webp"
           className="hidden"
         />
@@ -683,7 +985,7 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
             />
             <div className="absolute inset-8 border-2 border-dashed border-white/70 rounded-xl pointer-events-none flex items-center justify-center">
               <span className="text-sm font-semibold text-white bg-black/60 px-3 py-1.5 rounded-lg">
-                Đưa lá bệnh vào giữa khung hình
+                Đưa {getPartLabel(selectedPart).toLowerCase()} bị bệnh vào giữa khung hình
               </span>
             </div>
 
@@ -735,6 +1037,42 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
                 <Upload className="w-5 h-5 text-emerald-700" />
                 <span>Chọn ảnh khác trong máy</span>
               </button>
+            </div>
+
+            {/* Optional 2nd angle photo for higher accuracy */}
+            <div className="rounded-xl border border-stone-200 bg-stone-50 p-3.5">
+              {secondaryImagePreview ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <img
+                      src={secondaryImagePreview}
+                      alt="Ảnh góc thứ 2"
+                      className="w-16 h-16 object-cover rounded-lg border border-stone-200 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-stone-900">Đã thêm ảnh góc thứ 2</p>
+                      <p className="text-xs text-stone-600">Máy sẽ xem cả 2 ảnh để chẩn đoán chính xác hơn.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSecondaryImagePreview(null)}
+                    className="p-2 rounded-lg text-stone-500 hover:bg-stone-200 hover:text-stone-900 shrink-0 cursor-pointer"
+                    aria-label="Xóa ảnh góc thứ 2"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => secondaryFileInputRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-2 text-sm sm:text-base font-semibold text-emerald-800 hover:text-emerald-950 py-1 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 shrink-0" />
+                  <span>Thêm ảnh góc thứ 2 (mặt dưới lá hoặc cận vết bệnh — giúp soi chuẩn hơn)</span>
+                </button>
+              )}
             </div>
 
             {/* Friendly Blur / Light Check */}
@@ -913,17 +1251,86 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
                 <span>Chụp lại ảnh cây trồng</span>
               </button>
             </div>
-          ) : !result.selectedCropMatches ? (
+          ) : !result.selectedCropMatches ? (() => {
+            const detectedLower = (result.cropDetected || '').toLowerCase();
+            const isNegativeOrFake =
+              detectedLower.includes('không phải') ||
+              detectedLower.includes('ghép') ||
+              detectedLower.includes('giả') ||
+              detectedLower.includes('ai ') ||
+              detectedLower.includes('tạo bởi');
+
+            const detectedTargetCrop: CropType | null = isNegativeOrFake
+              ? null
+              : detectedLower.includes('lạc') || detectedLower.includes('đậu') || detectedLower.includes('peanut')
+              ? 'peanut'
+              : detectedLower.includes('cam') || detectedLower.includes('bưởi') || detectedLower.includes('chanh') || detectedLower.includes('citrus')
+              ? 'citrus'
+              : detectedLower.includes('lúa') || detectedLower.includes('rice')
+              ? 'rice'
+              : null;
+
+            const canSwitchToOtherCrop = detectedTargetCrop !== null && detectedTargetCrop !== selectedCrop;
+
+            return (
+              <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-6 space-y-4">
+                <div className="flex items-start gap-3">
+                  <ShieldAlert className="w-7 h-7 text-amber-700 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <h2 className="text-xl sm:text-2xl font-bold text-amber-950">
+                      {canSwitchToOtherCrop ? 'Nhầm loại cây rồi bác ơi!' : 'Ảnh chưa đúng cây trồng thực tế!'}
+                    </h2>
+                    <p className="text-base text-stone-800 leading-relaxed">
+                      Bác đang chọn khám <strong>{getCropLabel(selectedCrop)}</strong>, nhưng ảnh này có dấu hiệu:{' '}
+                      <strong>{result.cropDetected}</strong>. Máy tạm dừng để tránh báo nhầm bệnh cho bác.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                  {canSwitchToOtherCrop && detectedTargetCrop && (
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchCropAndDiagnose(detectedTargetCrop)}
+                      className="flex-1 min-h-[54px] px-5 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-base font-bold flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <RefreshCw className="w-5 h-5" />
+                      <span>
+                        Chuyển sang khám đúng {getCropLabel(detectedTargetCrop)} ngay
+                      </span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={startCamera}
+                    className={`${canSwitchToOtherCrop ? '' : 'flex-1'} min-h-[54px] px-5 py-3 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-base font-bold flex items-center justify-center gap-2 cursor-pointer`}
+                  >
+                    <Camera className="w-5 h-5" />
+                    <span>Chụp lại ảnh khác</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="min-h-[54px] px-5 py-3 rounded-xl border border-stone-300 bg-white hover:bg-stone-50 text-stone-800 text-base font-semibold cursor-pointer"
+                  >
+                    Chọn lại ảnh khác
+                  </button>
+                </div>
+              </div>
+            );
+          })() : result.selectedPartMatches === false && result.partDetected && result.partDetected !== selectedPart && selectedPart !== 'other' ? (
             <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-6 space-y-4">
               <div className="flex items-start gap-3">
                 <ShieldAlert className="w-7 h-7 text-amber-700 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <h2 className="text-xl sm:text-2xl font-bold text-amber-950">
-                    Nhầm loại cây rồi bác ơi!
+                    Nhầm bộ phận chụp rồi bác ơi!
                   </h2>
                   <p className="text-base text-stone-800 leading-relaxed">
-                    Bác đang chọn khám <strong>{getCropLabel(selectedCrop)}</strong>, nhưng ảnh này trông giống{' '}
-                    <strong>{result.cropDetected}</strong>. Máy tạm dừng để tránh báo nhầm bệnh cho bác.
+                    Bác đang chọn chụp <strong>{getPartLabel(selectedPart)}</strong>, nhưng trong ảnh lại là{' '}
+                    <strong>{getPartLabel(result.partDetected)}</strong>. Máy tạm dừng để tránh chẩn đoán nhầm bệnh cho bác.
                   </p>
                 </div>
               </div>
@@ -931,28 +1338,20 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
               <div className="flex flex-col sm:flex-row gap-3 pt-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    const detectedLower = result.cropDetected.toLowerCase();
-                    const targetCrop: CropType =
-                      detectedLower.includes('lạc') || detectedLower.includes('đậu') || detectedLower.includes('peanut')
-                        ? 'peanut'
-                        : detectedLower.includes('cam') || detectedLower.includes('bưởi') || detectedLower.includes('citrus')
-                        ? 'citrus'
-                        : 'rice';
-                    handleSwitchCropAndDiagnose(targetCrop);
-                  }}
+                  onClick={() => handleSwitchPartAndDiagnose(result.partDetected!)}
                   className="flex-1 min-h-[54px] px-5 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-base font-bold flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <RefreshCw className="w-5 h-5" />
-                  <span>
-                    Chuyển sang khám đúng{' '}
-                    {result.cropDetected.toLowerCase().includes('lạc') || result.cropDetected.toLowerCase().includes('đậu')
-                      ? 'Cây Lạc'
-                      : result.cropDetected.toLowerCase().includes('cam')
-                      ? 'Cây Cam, Bưởi'
-                      : 'Cây Lúa'}{' '}
-                    ngay
-                  </span>
+                  <span>Chuyển sang khám đúng {getPartLabel(result.partDetected)} ngay</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={startCamera}
+                  className="min-h-[54px] px-5 py-3 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-base font-bold flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Camera className="w-5 h-5" />
+                  <span>Chụp lại ảnh khác</span>
                 </button>
 
                 <button
@@ -1009,16 +1408,81 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
             if (isHealthy) {
               return (
                 <div className="bg-white rounded-2xl border-2 border-emerald-300 p-6 space-y-5">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-8 h-8 text-emerald-700 shrink-0 mt-0.5" />
-                    <div className="space-y-1">
-                      <h2 className="text-2xl sm:text-3xl font-bold text-emerald-900">
-                        Cây khỏe mạnh, không có bệnh!
-                      </h2>
-                      <p className="text-base text-stone-600">
-                        Cây đang kiểm tra: <strong>{getCropLabel(selectedCrop)}</strong> ({getPartLabel(selectedPart)})
-                      </p>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle className="w-8 h-8 text-emerald-700 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <h2 className="text-2xl sm:text-3xl font-bold text-emerald-900">
+                          Cây khỏe mạnh, không có bệnh!
+                        </h2>
+                        <p className="text-base text-stone-600">
+                          Cây đang kiểm tra: <strong>{getCropLabel(selectedCrop)}</strong> ({getPartLabel(selectedPart)})
+                        </p>
+                      </div>
                     </div>
+
+                    {isSpeechSupported() && (
+                      <div className="flex flex-col items-end gap-1">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (isSpeaking || isLoadingSpeech) {
+                              stopSpeaking();
+                              setIsSpeaking(false);
+                              setIsLoadingSpeech(false);
+                              return;
+                            }
+                            setSpeechError(null);
+                            setIsLoadingSpeech(true);
+                            const textToRead = `Kết quả kiểm tra ${getCropLabel(selectedCrop)}: Cây khỏe mạnh, chưa thấy dấu hiệu bệnh hại. ${
+                              result.recommendations.length > 0
+                                ? 'Cách chăm sóc: ' + result.recommendations.slice(0, 3).join('. ')
+                                : ''
+                            }`;
+                            await speakVietnamese(textToRead, {
+                              onStart: () => {
+                                setIsLoadingSpeech(false);
+                                setIsSpeaking(true);
+                              },
+                              onEnd: () => {
+                                setIsLoadingSpeech(false);
+                                setIsSpeaking(false);
+                              },
+                              onError: (msg) => {
+                                setIsLoadingSpeech(false);
+                                setIsSpeaking(false);
+                                setSpeechError(msg || 'Không phát được giọng đọc tiếng Việt.');
+                              },
+                            });
+                          }}
+                          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border min-h-[44px] cursor-pointer ${
+                            isSpeaking
+                              ? 'bg-amber-100 text-amber-950 border-amber-300'
+                              : isLoadingSpeech
+                              ? 'bg-stone-100 text-stone-700 border-stone-300'
+                              : 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
+                          }`}
+                        >
+                          {isLoadingSpeech ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : isSpeaking ? (
+                            <VolumeX className="w-4 h-4" />
+                          ) : (
+                            <Volume2 className="w-4 h-4" />
+                          )}
+                          <span>
+                            {isLoadingSpeech
+                              ? 'Đang tạo giọng đọc...'
+                              : isSpeaking
+                              ? 'Dừng đọc'
+                              : 'Nghe bác sĩ đọc'}
+                          </span>
+                        </button>
+                        {speechError && (
+                          <span className="text-xs text-red-700 font-medium">{speechError}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {result.symptoms.length > 0 && (
@@ -1080,28 +1544,62 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
             const badge = getConfidenceText(primaryDiag?.confidenceLevel || 'medium');
             const diagNameLower = (primaryDiag?.diseaseName || '').toLowerCase();
             const diagIdLower = (primaryDiag?.diseaseId || '').toLowerCase();
-            const matchedRefId =
-              selectedCrop === 'citrus' &&
-              (diagIdLower.includes('greening') ||
-                diagIdLower.includes('hlb') ||
-                diagNameLower.includes('greening') ||
-                diagNameLower.includes('hlb') ||
-                diagNameLower.includes('vàng lá gân xanh'))
+            const exactRef = DEFAULT_DISEASES.find(
+              (d) => d.cropType === selectedCrop && d.id === primaryDiag?.diseaseId
+            );
+            const matchedRefId = exactRef
+              ? exactRef.id
+              : selectedCrop === 'citrus'
+              ? diagIdLower.includes('psyllid') || diagIdLower.includes('ray_chong_canh') || diagNameLower.includes('rầy chổng cánh') || diagNameLower.includes('diaphorina')
+                ? 'citrus_psyllid'
+                : diagIdLower.includes('leafminer') || diagIdLower.includes('ve_bua') || diagNameLower.includes('vẽ bùa')
+                ? 'citrus_leafminer'
+                : diagIdLower.includes('gummosis') || diagIdLower.includes('chay_gom') || diagNameLower.includes('chảy gôm') || diagNameLower.includes('xì mủ') || diagNameLower.includes('phytophthora')
+                ? 'citrus_gummosis'
+                : diagIdLower.includes('aphid') || diagIdLower.includes('rep_muoi') || diagNameLower.includes('rệp muội') || diagNameLower.includes('rệp đen')
+                ? 'citrus_brown_aphid'
+                : diagIdLower.includes('black_spot') || diagIdLower.includes('dom_den') || diagNameLower.includes('đốm đen')
+                ? 'citrus_black_spot'
+                : diagIdLower.includes('greening') || diagIdLower.includes('hlb') || diagNameLower.includes('vàng lá gân xanh') || diagNameLower.includes('hlb')
                 ? 'citrus_greening'
-                : selectedCrop === 'rice' &&
-                  (diagIdLower.includes('blast') ||
-                    diagIdLower.includes('dao_on') ||
-                    diagNameLower.includes('đạo ôn'))
+                : diagIdLower.includes('canker') || diagNameLower.includes('loét')
+                ? 'citrus_canker'
+                : diagIdLower.includes('scab') || diagNameLower.includes('ghẻ') || diagNameLower.includes('sẹo')
+                ? 'citrus_scab'
+                : null
+              : selectedCrop === 'rice'
+              ? diagIdLower.includes('planthopper') || diagIdLower.includes('ray_nau') || diagNameLower.includes('rầy nâu') || diagNameLower.includes('cháy rầy')
+                ? 'rice_brown_planthopper'
+                : diagIdLower.includes('false_smut') || diagIdLower.includes('hoa_cuc') || diagNameLower.includes('hoa cúc') || diagNameLower.includes('than đen')
+                ? 'rice_false_smut'
+                : diagIdLower.includes('leaf_folder') || diagIdLower.includes('cuon_la') || diagNameLower.includes('cuốn lá')
+                ? 'rice_leaf_folder'
+                : diagIdLower.includes('tungro') || diagIdLower.includes('vang_lun') || diagNameLower.includes('vàng lùn') || diagNameLower.includes('tungro')
+                ? 'rice_tungro'
+                : diagIdLower.includes('blast') || diagIdLower.includes('dao_on') || diagNameLower.includes('đạo ôn')
                 ? 'rice_blast'
-                : selectedCrop === 'peanut' &&
-                  (diagIdLower.includes('spot') ||
-                    diagIdLower.includes('dom_la') ||
-                    diagIdLower.includes('dom_nau') ||
-                    diagNameLower.includes('đốm lá') ||
-                    diagNameLower.includes('đốm nâu') ||
-                    diagNameLower.includes('đốm đen'))
-                ? 'peanut_leaf_spot'
-                : null;
+                : diagIdLower.includes('bacterial') || diagIdLower.includes('bac_la') || diagNameLower.includes('bạc lá') || diagNameLower.includes('cháy bìa')
+                ? 'rice_bacterial_blight'
+                : diagIdLower.includes('sheath') || diagIdLower.includes('kho_van') || diagNameLower.includes('khô vằn')
+                ? 'rice_sheath_blight'
+                : diagIdLower.includes('brown') || diagIdLower.includes('dom_nau') || diagNameLower.includes('đốm nâu')
+                ? 'rice_brown_spot'
+                : null
+              : diagIdLower.includes('wilt') || diagIdLower.includes('heo_xanh') || diagNameLower.includes('héo xanh') || diagNameLower.includes('ralstonia')
+              ? 'peanut_bacterial_wilt'
+              : diagIdLower.includes('aspergillus') || diagIdLower.includes('thoi_den') || diagNameLower.includes('thối đen') || diagNameLower.includes('mốc đen')
+              ? 'peanut_aspergillus_crown_rot'
+              : diagIdLower.includes('aphid') || diagIdLower.includes('rep_muoi') || diagNameLower.includes('rệp muội')
+              ? 'peanut_aphid'
+              : diagIdLower.includes('spodoptera') || diagIdLower.includes('sau_khoang') || diagNameLower.includes('sâu khoang') || diagNameLower.includes('ăn tạp')
+              ? 'peanut_spodoptera'
+              : diagIdLower.includes('rust') || diagIdLower.includes('gi_sat') || diagNameLower.includes('gỉ sắt')
+              ? 'peanut_rust'
+              : diagIdLower.includes('stem_rot') || diagIdLower.includes('thoi_trang') || diagNameLower.includes('thối trắng') || diagNameLower.includes('mốc trắng')
+              ? 'peanut_stem_rot'
+              : diagIdLower.includes('spot') || diagIdLower.includes('dom_la') || diagNameLower.includes('đốm lá') || diagNameLower.includes('đốm nâu') || diagNameLower.includes('đốm đen')
+              ? 'peanut_leaf_spot'
+              : null;
             const matchedRef = matchedRefId
               ? DEFAULT_DISEASES.find((d) => d.id === matchedRefId)
               : undefined;
@@ -1114,14 +1612,151 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
                     <span className="text-sm font-semibold text-stone-600">
                       {getCropLabel(selectedCrop)} • {getPartLabel(selectedPart)}
                     </span>
-                    <span className={`px-3 py-1 rounded-lg border text-sm font-bold ${badge.style}`}>
-                      {badge.label}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`px-3 py-1 rounded-lg border text-sm font-bold ${badge.style}`}>
+                        {badge.label}
+                      </span>
+                      {isSpeechSupported() && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (isSpeaking || isLoadingSpeech) {
+                              stopSpeaking();
+                              setIsSpeaking(false);
+                              setIsLoadingSpeech(false);
+                              return;
+                            }
+                            setSpeechError(null);
+                            setIsLoadingSpeech(true);
+                            const signs = (primaryDiag?.evidence?.length ? primaryDiag.evidence : result.symptoms).slice(0, 3).join('. ');
+                            const recs = result.recommendations.slice(0, 4).join('. ');
+                            const textToRead = `Kết quả chẩn đoán ${getCropLabel(selectedCrop)}: ${
+                              primaryDiag?.diseaseName || 'Chưa xác định rõ bệnh'
+                            }. ${signs ? 'Dấu hiệu nhận biết: ' + signs + '. ' : ''}${
+                              result.causes ? 'Nguyên nhân: ' + result.causes + '. ' : ''
+                            }${recs ? 'Cách xử lý an toàn: ' + recs : ''}`;
+                            await speakVietnamese(textToRead, {
+                              onStart: () => {
+                                setIsLoadingSpeech(false);
+                                setIsSpeaking(true);
+                              },
+                              onEnd: () => {
+                                setIsLoadingSpeech(false);
+                                setIsSpeaking(false);
+                              },
+                              onError: (msg) => {
+                                setIsLoadingSpeech(false);
+                                setIsSpeaking(false);
+                                setSpeechError(msg || 'Không phát được giọng đọc tiếng Việt.');
+                              },
+                            });
+                          }}
+                          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-bold border min-h-[40px] cursor-pointer ${
+                            isSpeaking
+                              ? 'bg-amber-100 text-amber-950 border-amber-300'
+                              : isLoadingSpeech
+                              ? 'bg-stone-100 text-stone-700 border-stone-300'
+                              : 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
+                          }`}
+                        >
+                          {isLoadingSpeech ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : isSpeaking ? (
+                            <VolumeX className="w-4 h-4" />
+                          ) : (
+                            <Volume2 className="w-4 h-4" />
+                          )}
+                          <span>
+                            {isLoadingSpeech
+                              ? 'Đang tạo giọng...'
+                              : isSpeaking
+                              ? 'Dừng đọc'
+                              : 'Nghe bác sĩ đọc'}
+                          </span>
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {speechError && (
+                    <p className="text-xs text-red-700 font-medium">{speechError}</p>
+                  )}
                   <h2 className="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">
                     {primaryDiag?.diseaseName || 'Chưa xác định rõ bệnh'}
                   </h2>
+                  {hasRefinedWithAnswers && (
+                    <p className="text-sm font-semibold text-emerald-800">
+                      ✓ Đã cập nhật chẩn đoán dựa trên dấu hiệu thực tế bác vừa xác nhận.
+                    </p>
+                  )}
                 </div>
+
+                {/* Interactive Symptom Verification Questions when AI needs confirmation */}
+                {result.followUpQuestions && result.followUpQuestions.length > 0 && !hasRefinedWithAnswers && (
+                  <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-4 sm:p-5 space-y-4">
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-bold text-amber-950">
+                        Hỏi thêm 1–2 ý để Bác sĩ AI chốt chính xác hơn:
+                      </h3>
+                      <p className="text-sm text-stone-700">
+                        Bác nhìn hoặc sờ nhẹ trực tiếp lên cây rồi bấm chọn bên dưới nhé:
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      {result.followUpQuestions.map((q, qIdx) => (
+                        <div key={q.id} className="bg-white rounded-xl border border-amber-200 p-3.5 space-y-2.5">
+                          <p className="text-base font-bold text-stone-900">
+                            {qIdx + 1}. {q.question}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {q.options.map((opt) => {
+                              const isPicked = followUpSelections[q.id] === opt;
+                              return (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() =>
+                                    setFollowUpSelections((prev) => ({
+                                      ...prev,
+                                      [q.id]: opt,
+                                    }))
+                                  }
+                                  className={`px-4 py-2.5 rounded-xl text-sm sm:text-base font-semibold border transition-colors min-h-[44px] cursor-pointer ${
+                                    isPicked
+                                      ? 'bg-emerald-700 text-white border-emerald-700'
+                                      : 'bg-stone-50 text-stone-800 border-stone-300 hover:border-emerald-500'
+                                  }`}
+                                >
+                                  {opt}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleConfirmFollowUp}
+                      disabled={isRefining}
+                      className={`w-full min-h-[50px] px-5 py-3 rounded-xl font-bold text-base text-white flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                        isRefining
+                          ? 'bg-stone-400 cursor-not-allowed'
+                          : 'bg-amber-800 hover:bg-amber-900'
+                      }`}
+                    >
+                      {isRefining ? (
+                        <>
+                          <RefreshCw className="w-5 h-5 animate-spin shrink-0" />
+                          <span>Đang chốt lại kết quả...</span>
+                        </>
+                      ) : (
+                        <span>Chốt lại kết quả chính xác hơn</span>
+                      )}
+                    </button>
+                  </div>
+                )}
 
                 {/* Observed Symptoms */}
                 {(result.symptoms.length > 0 || (primaryDiag?.evidence && primaryDiag.evidence.length > 0)) && (
@@ -1187,7 +1822,7 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
                 )}
 
                 {/* Simple Side-by-side Visual Comparison (Light Clean Theme) */}
-                {matchedRef && (
+                {matchedRef && matchedRef.sampleImageUrl && (
                   <div className="space-y-3 pt-1">
                     <h3 className="text-lg font-bold text-stone-900">
                       So sánh ảnh bác chụp với ảnh mẫu bệnh
@@ -1210,7 +1845,7 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
                           2. Ảnh mẫu: {matchedRef.vietnameseName}
                         </p>
                         <div className="rounded-lg overflow-hidden aspect-4/3 bg-white border border-stone-200 flex items-center justify-center">
-                          {matchedRef.sampleImageUrl && !refImgError ? (
+                          {!refImgError ? (
                             <img
                               src={matchedRef.sampleImageUrl}
                               alt={matchedRef.vietnameseName}
@@ -1224,8 +1859,30 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
                             </span>
                           )}
                         </div>
+                        {matchedRef.imageSource && (
+                          <p className="text-xs text-stone-600 leading-snug">{matchedRef.imageSource}</p>
+                        )}
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Secondary possibilities when AI sees lookalikes */}
+                {result.possibleDiagnoses.length > 1 && (
+                  <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 space-y-2">
+                    <h3 className="text-base font-bold text-stone-900">
+                      Khả năng khác cũng cần lưu ý:
+                    </h3>
+                    <ul className="space-y-1.5 text-sm sm:text-base text-stone-800">
+                      {result.possibleDiagnoses.slice(1, 3).map((alt, idx) => (
+                        <li key={idx} className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold">• {alt.diseaseName}</span>
+                          <span className="text-xs px-2 py-0.5 rounded bg-white border border-stone-200 text-stone-600">
+                            {getConfidenceText(alt.confidenceLevel).label}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
@@ -1249,6 +1906,52 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
                     </div>
                   </details>
                 )}
+
+                {/* Quick correction / re-check if farmer spots mismatch */}
+                <div className="rounded-xl border border-stone-200 bg-stone-50/70 p-4 space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowCorrectionBox(!showCorrectionBox)}
+                    className="text-sm sm:text-base font-semibold text-amber-900 hover:underline flex items-center gap-2 cursor-pointer"
+                  >
+                    <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>
+                      {showCorrectionBox
+                        ? 'Ẩn phần góp ý sửa kết quả'
+                        : 'Thấy máy đoán chưa đúng? Nhắc thêm dấu hiệu để kiểm tra lại'}
+                    </span>
+                  </button>
+
+                  {showCorrectionBox && (
+                    <form onSubmit={handleRecheckWithObservation} className="space-y-3">
+                      <textarea
+                        rows={2}
+                        value={userObservationText}
+                        onChange={(e) => setUserObservationText(e.target.value)}
+                        placeholder="Ví dụ: Đây là con rầy đậu chổng đuôi lên, có sợi sáp trắng; hoặc mặt dưới lá có bột màu nâu..."
+                        className="w-full p-3 rounded-xl border border-stone-300 bg-white text-base focus:outline-none focus:border-emerald-700"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isRecheckingWithNote || !userObservationText.trim()}
+                        className={`min-h-[46px] px-5 py-2.5 rounded-xl font-bold text-base text-white flex items-center justify-center gap-2 cursor-pointer ${
+                          isRecheckingWithNote || !userObservationText.trim()
+                            ? 'bg-stone-400 cursor-not-allowed'
+                            : 'bg-amber-800 hover:bg-amber-900'
+                        }`}
+                      >
+                        {isRecheckingWithNote ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>Đang kiểm tra lại...</span>
+                          </>
+                        ) : (
+                          <span>Kiểm tra lại với mô tả của bác</span>
+                        )}
+                      </button>
+                    </form>
+                  )}
+                </div>
 
                 {/* Bottom Actions */}
                 <div className="pt-3 border-t border-stone-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">

@@ -26,10 +26,23 @@ export interface ReferenceLink {
   url: string;
 }
 
+export interface FollowUpQuestion {
+  id: string;
+  question: string;
+  options: string[];
+}
+
+export interface FollowUpAnswer {
+  question: string;
+  answer: string;
+}
+
 export interface DiagnosisResult {
   isPlantImage: boolean;
   cropDetected: string;
   selectedCropMatches: boolean;
+  partDetected?: PlantPart;
+  selectedPartMatches?: boolean;
   imageQuality: ImageQuality;
   qualityIssues: string[];
   symptoms: string[];
@@ -39,6 +52,7 @@ export interface DiagnosisResult {
   severityAssessment: SeverityAssessment;
   needsMoreImages: boolean;
   additionalImageInstructions: string[];
+  followUpQuestions?: FollowUpQuestion[];
   recommendations: string[];
   referenceLinks?: ReferenceLink[];
   expertVerificationRecommended: boolean;
@@ -59,6 +73,8 @@ export interface DiseaseRecord {
   references: string;
   verificationStatus: VerificationStatus;
   sampleImageUrl?: string;
+  imageSource?: string;
+  imageSourceUrl?: string;
   verifiedBy?: string;
   standardCode?: string;
   reviewDate?: string;

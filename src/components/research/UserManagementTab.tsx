@@ -31,6 +31,7 @@ export const UserManagementTab: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -53,8 +54,9 @@ export const UserManagementTab: React.FC = () => {
   };
 
   const handleRoleChange = async (userId: string, newRole: UserRole, userEmail: string) => {
+    setActionError(null);
     if (SYSTEM_ADMIN_EMAILS.includes(userEmail.toLowerCase()) && newRole !== 'administrator') {
-      alert('Không thể hạ quyền của Quản trị viên gốc hệ thống.');
+      setActionError('Không thể hạ quyền của Quản trị viên gốc hệ thống.');
       return;
     }
 
@@ -66,7 +68,7 @@ export const UserManagementTab: React.FC = () => {
       setActionSuccess(`Đã cập nhật vai trò người dùng thành "${newRole}".`);
       setTimeout(() => setActionSuccess(null), 3000);
     } catch (err: any) {
-      alert('Lỗi cập nhật vai trò: ' + err.message);
+      setActionError('Lỗi cập nhật vai trò: ' + (err.message || 'Không xác định'));
     }
   };
 
@@ -74,6 +76,7 @@ export const UserManagementTab: React.FC = () => {
     req: RoleUpgradeRequest,
     status: 'approved' | 'rejected'
   ) => {
+    setActionError(null);
     try {
       await processRoleUpgradeRequest(
         req.id,
@@ -89,7 +92,7 @@ export const UserManagementTab: React.FC = () => {
       );
       setTimeout(() => setActionSuccess(null), 3000);
     } catch (err: any) {
-      alert('Lỗi xử lý yêu cầu: ' + err.message);
+      setActionError('Lỗi xử lý yêu cầu: ' + (err.message || 'Không xác định'));
     }
   };
 
@@ -110,6 +113,13 @@ export const UserManagementTab: React.FC = () => {
         <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-950 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="w-4 h-4 text-emerald-700" />
           <span>{actionSuccess}</span>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-950 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+          <AlertCircle className="w-4 h-4 text-red-700 shrink-0" />
+          <span>{actionError}</span>
         </div>
       )}
 

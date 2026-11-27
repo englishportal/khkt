@@ -7,10 +7,14 @@ import {
   X,
   RefreshCw,
   Camera,
+  ExternalLink,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { DiseaseRecord, CropType } from '../../types';
 import { fetchDiseases, saveDisease, deleteDisease, syncVerifiedDiseases } from '../../services/diseaseService';
 import { useAuth } from '../../context/AuthContext';
+import { isSpeechSupported, speakVietnamese, stopSpeaking } from '../../utils/speech';
 
 interface KnowledgeLibraryProps {
   initialCrop?: CropType;
@@ -32,6 +36,9 @@ export const KnowledgeLibrary: React.FC<KnowledgeLibraryProps> = ({
 
   // Detail modal
   const [selectedDisease, setSelectedDisease] = useState<DiseaseRecord | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [isLoadingSpeech, setIsLoadingSpeech] = useState<boolean>(false);
+  const [speechError, setSpeechError] = useState<string | null>(null);
 
   // Admin editor modal
   const [isEditorOpen, setIsEditorOpen] = useState<boolean>(false);
@@ -40,7 +47,15 @@ export const KnowledgeLibrary: React.FC<KnowledgeLibraryProps> = ({
 
   useEffect(() => {
     loadDiseases();
+    return () => stopSpeaking();
   }, []);
+
+  useEffect(() => {
+    stopSpeaking();
+    setIsSpeaking(false);
+    setIsLoadingSpeech(false);
+    setSpeechError(null);
+  }, [selectedDisease?.id]);
 
   useEffect(() => {
     if (initialCrop) setSelectedCropFilter(initialCrop);
@@ -156,7 +171,7 @@ export const KnowledgeLibrary: React.FC<KnowledgeLibraryProps> = ({
             Sổ Tra Cứu Bệnh Cây
           </h1>
           <p className="text-base text-stone-600 mt-1">
-            Xem dấu hiệu bệnh và cách phòng chữa đơn giản cho Cam, Lúa, Lạc.
+            Tổng hợp {diseases.length > 0 ? diseases.length : 23} bệnh & sâu hại thường gặp trên Cam, Lúa, Lạc kèm ảnh đối chứng.
           </p>
         </div>
 
@@ -326,14 +341,90 @@ export const KnowledgeLibrary: React.FC<KnowledgeLibraryProps> = ({
             </div>
 
             <div className="p-6 space-y-5 text-base text-stone-800 leading-relaxed">
+              {isSpeechSupported() && (
+                <div className="flex flex-col items-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (isSpeaking || isLoadingSpeech) {
+                        stopSpeaking();
+                        setIsSpeaking(false);
+                        setIsLoadingSpeech(false);
+                        return;
+                      }
+                      setSpeechError(null);
+                      setIsLoadingSpeech(true);
+                      const script = `${selectedDisease.vietnameseName}. Dấu hiệu nhận biết: ${selectedDisease.symptoms}. Nguyên nhân: ${selectedDisease.causes}. Cách phòng và chữa an toàn: ${selectedDisease.safeManagement}.`;
+                      await speakVietnamese(script, {
+                        onStart: () => {
+                          setIsLoadingSpeech(false);
+                          setIsSpeaking(true);
+                        },
+                        onEnd: () => {
+                          setIsLoadingSpeech(false);
+                          setIsSpeaking(false);
+                        },
+                        onError: (msg) => {
+                          setIsLoadingSpeech(false);
+                          setIsSpeaking(false);
+                          setSpeechError(msg || 'Không phát được giọng đọc tiếng Việt.');
+                        },
+                      });
+                    }}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-colors min-h-[42px] cursor-pointer ${
+                      isSpeaking
+                        ? 'bg-amber-100 text-amber-950 border-amber-300'
+                        : isLoadingSpeech
+                        ? 'bg-stone-100 text-stone-700 border-stone-300'
+                        : 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
+                    }`}
+                  >
+                    {isLoadingSpeech ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : isSpeaking ? (
+                      <VolumeX className="w-4 h-4" />
+                    ) : (
+                      <Volume2 className="w-4 h-4" />
+                    )}
+                    <span>
+                      {isLoadingSpeech
+                        ? 'Đang tạo giọng đọc...'
+                        : isSpeaking
+                        ? 'Dừng đọc'
+                        : 'Nghe đọc bệnh này'}
+                    </span>
+                  </button>
+                  {speechError && (
+                    <span className="text-xs text-red-700 font-medium">{speechError}</span>
+                  )}
+                </div>
+              )}
               {selectedDisease.sampleImageUrl && !failedImages[selectedDisease.id] && (
-                <div className="rounded-xl overflow-hidden aspect-16/9 bg-stone-100 border border-stone-200">
-                  <img
-                    src={selectedDisease.sampleImageUrl}
-                    alt={selectedDisease.vietnameseName}
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
-                  />
+                <div className="space-y-1.5">
+                  <div className="rounded-xl overflow-hidden aspect-16/9 bg-stone-100 border border-stone-200">
+                    <img
+                      src={selectedDisease.sampleImageUrl}
+                      alt={selectedDisease.vietnameseName}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  {(selectedDisease.imageSource || selectedDisease.imageSourceUrl) && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-stone-600 px-1">
+                      <span>{selectedDisease.imageSource || 'Ảnh đối chiếu bệnh hại thực tế'}</span>
+                      {selectedDisease.imageSourceUrl && (
+                        <a
+                          href={selectedDisease.imageSourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 font-semibold text-emerald-800 hover:underline"
+                        >
+                          <span>Xem nguồn ảnh gốc</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -371,6 +462,21 @@ export const KnowledgeLibrary: React.FC<KnowledgeLibraryProps> = ({
                   )}
                 </div>
               </div>
+
+              {(selectedDisease.standardCode || selectedDisease.references) && (
+                <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 text-sm text-stone-700 space-y-1">
+                  {selectedDisease.standardCode && (
+                    <p>
+                      <strong>Tiêu chuẩn áp dụng:</strong> {selectedDisease.standardCode}
+                    </p>
+                  )}
+                  {selectedDisease.references && (
+                    <p>
+                      <strong>Nguồn tài liệu:</strong> {selectedDisease.references}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="border-t border-stone-200 p-4 bg-stone-50 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">

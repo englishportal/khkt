@@ -12,11 +12,13 @@ export const RestrictedAccessView: React.FC<RestrictedAccessViewProps> = ({ onOp
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     if (!user) {
-      alert('Vui lòng đăng nhập trước khi gửi đề xuất phân quyền.');
+      setSubmitError('Vui lòng đăng nhập trước khi gửi đề xuất phân quyền.');
       return;
     }
 
@@ -25,7 +27,7 @@ export const RestrictedAccessView: React.FC<RestrictedAccessViewProps> = ({ onOp
       await requestElevation('researcher', organization, reason);
       setSuccess(true);
     } catch (err: any) {
-      alert('Lỗi: ' + err.message);
+      setSubmitError('Lỗi: ' + (err.message || 'Không xác định'));
     } finally {
       setIsSubmitting(false);
     }
@@ -95,6 +97,12 @@ export const RestrictedAccessView: React.FC<RestrictedAccessViewProps> = ({ onOp
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+              {submitError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs font-semibold flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-red-700 shrink-0" />
+                  <span>{submitError}</span>
+                </div>
+              )}
               <div>
                 <label className="block font-bold text-stone-700 mb-1">
                   Cơ quan / Viện / Trường / Hợp tác xã công tác *

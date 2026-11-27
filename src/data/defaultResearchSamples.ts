@@ -28,7 +28,7 @@ export const DEFAULT_RESEARCH_SAMPLES: ResearchSample[] = [
     aiPrediction: 'Bệnh Loét cam quýt (Bacterial Canker)',
     confidenceLevel: 'high',
     isCorrect: 'correct',
-    imageUrl: '/images/citrus_leaf_hlb.jpg',
+    imageUrl: '/images/citrus_canker.jpg',
     notes: 'Vết loét sần sùi có quầng vàng trên lá bánh tẻ, bùng phát sau bão số 4.',
     createdAt: '2026-02-19T09:15:00Z'
   },
@@ -43,7 +43,7 @@ export const DEFAULT_RESEARCH_SAMPLES: ResearchSample[] = [
     aiPrediction: 'Bệnh Ghẻ sẹo cam quýt (Citrus Scab)',
     confidenceLevel: 'medium',
     isCorrect: 'correct',
-    imageUrl: '/images/citrus_leaf_hlb.jpg',
+    imageUrl: '/images/citrus_scab.jpg',
     notes: 'Mụn gai hình nón sừng trên mặt dưới lá non cam bù.',
     createdAt: '2026-02-23T11:00:00Z'
   },
@@ -90,7 +90,7 @@ export const DEFAULT_RESEARCH_SAMPLES: ResearchSample[] = [
     aiPrediction: 'Bệnh Bạc lá lúa (Bacterial Blight)',
     confidenceLevel: 'high',
     isCorrect: 'correct',
-    imageUrl: '/images/rice_leaf_blast.jpg',
+    imageUrl: '/images/rice_bacterial_blight.jpg',
     notes: 'Mép lá gợn sóng khô trắng rơm, quan sát giọt dịch vi khuẩn đục vào sáng sớm.',
     createdAt: '2026-03-04T08:45:00Z'
   },
@@ -105,7 +105,7 @@ export const DEFAULT_RESEARCH_SAMPLES: ResearchSample[] = [
     aiPrediction: 'Bệnh Khô vằn lúa (Sheath Blight)',
     confidenceLevel: 'high',
     isCorrect: 'correct',
-    imageUrl: '/images/rice_leaf_blast.jpg',
+    imageUrl: '/images/rice_sheath_blight.jpg',
     notes: 'Đốm vân mây lan từ bẹ lá sát mặt nước lên phiến lá đòng.',
     createdAt: '2026-03-06T15:30:00Z'
   },
@@ -120,7 +120,7 @@ export const DEFAULT_RESEARCH_SAMPLES: ResearchSample[] = [
     aiPrediction: 'Bệnh Đốm nâu lúa (Brown Spot)',
     confidenceLevel: 'medium',
     isCorrect: 'correct',
-    imageUrl: '/images/rice_leaf_blast.jpg',
+    imageUrl: '/images/rice_brown_spot.jpg',
     notes: 'Đốm mắt tròn màu nâu sẫm trên đất cát pha chua mặn.',
     createdAt: '2026-03-09T09:10:00Z'
   },
@@ -167,7 +167,7 @@ export const DEFAULT_RESEARCH_SAMPLES: ResearchSample[] = [
     aiPrediction: 'Bệnh Gỉ sắt lạc (Groundnut Rust)',
     confidenceLevel: 'high',
     isCorrect: 'correct',
-    imageUrl: '/images/peanut_leaf_spot.jpg',
+    imageUrl: '/images/peanut_rust.jpg',
     notes: 'Mụn nâu đỏ dưới mặt lá giải phóng bột nâu gỉ sắt khi chà nhẹ.',
     createdAt: '2026-03-15T11:40:00Z'
   },
@@ -182,7 +182,7 @@ export const DEFAULT_RESEARCH_SAMPLES: ResearchSample[] = [
     aiPrediction: 'Bệnh Thối trắng thân / Héo rũ gốc (Stem Rot)',
     confidenceLevel: 'high',
     isCorrect: 'correct',
-    imageUrl: '/images/peanut_leaf_spot.jpg',
+    imageUrl: '/images/peanut_stem_rot.jpg',
     notes: 'Màng sợi nấm trắng như bông kèm các hạt hạch nấm nâu tròn ở gốc sát mặt đất cát pha.',
     createdAt: '2026-03-17T14:50:00Z'
   },
@@ -212,7 +212,7 @@ export const DEFAULT_RESEARCH_SAMPLES: ResearchSample[] = [
     aiPrediction: 'Bệnh Thối trắng thân / Héo rũ gốc (Stem Rot)',
     confidenceLevel: 'high',
     isCorrect: 'correct',
-    imageUrl: '/images/peanut_leaf_spot.jpg',
+    imageUrl: '/images/peanut_stem_rot.jpg',
     notes: 'Hạch nấm hình thành sau 48h ủ ẩm trong buồng tiêu bản.',
     createdAt: '2026-03-21T13:00:00Z'
   }

@@ -5,6 +5,7 @@ import {
   Camera,
   MessageCircle,
   ExternalLink,
+  Cloud,
 } from 'lucide-react';
 import { DiagnosisHistoryItem, CropType } from '../../types';
 import { fetchUserDiagnoses, deleteDiagnosisRecord } from '../../services/diagnosisService';
@@ -19,7 +20,7 @@ export const DiagnosisHistoryView: React.FC<DiagnosisHistoryViewProps> = ({
   onScanNew,
   onViewAssistantWithDiagnosis,
 }) => {
-  const { user, isResearcher } = useAuth();
+  const { user, isResearcher, openAuthModal } = useAuth();
   const [historyItems, setHistoryItems] = useState<DiagnosisHistoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedCrop, setSelectedCrop] = useState<string>('all');
@@ -44,7 +45,7 @@ export const DiagnosisHistoryView: React.FC<DiagnosisHistoryViewProps> = ({
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    await deleteDiagnosisRecord(id);
+    await deleteDiagnosisRecord(id, user?.uid);
     setHistoryItems((prev) => prev.filter((item) => item.id !== id));
     if (viewItem?.id === id) setViewItem(null);
   };
@@ -76,6 +77,31 @@ export const DiagnosisHistoryView: React.FC<DiagnosisHistoryViewProps> = ({
           <span>Chụp khám cây mới</span>
         </button>
       </div>
+
+      {!user ? (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5 text-sm sm:text-base text-stone-800">
+            <Cloud className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
+            <span>
+              Các lần khám hiện đang lưu tạm trên máy này. Đăng nhập bằng số điện thoại để khi đổi sang máy khác vẫn hiện đầy đủ dữ liệu nhé.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={openAuthModal}
+            className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-bold whitespace-nowrap cursor-pointer min-h-[40px]"
+          >
+            Đăng nhập bằng SĐT
+          </button>
+        </div>
+      ) : (
+        <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl px-4 py-3 flex items-center gap-2.5 text-sm text-emerald-950">
+          <Cloud className="w-4 h-4 text-emerald-700 shrink-0" />
+          <span>
+            Đang lưu theo số điện thoại <strong>{user.phoneNumber || user.displayName}</strong> — nhập lại đúng số này trên máy khác sẽ hiện đủ toàn bộ lịch sử.
+          </span>
+        </div>
+      )}
 
       {/* Crop Filter */}
       <div className="flex flex-wrap items-center gap-2">

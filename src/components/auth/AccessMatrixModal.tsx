@@ -29,6 +29,7 @@ export const AccessMatrixModal: React.FC<AccessMatrixModalProps> = ({ isOpen, on
   const [requestedRole, setRequestedRole] = useState<'researcher' | 'administrator'>('researcher');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -100,13 +101,14 @@ export const AccessMatrixModal: React.FC<AccessMatrixModalProps> = ({ isOpen, on
 
   const handleSubmitRequest = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     if (!user) {
-      alert('Vui lòng đăng nhập bằng Google trước khi gửi yêu cầu nâng cấp quyền.');
+      setSubmitError('Vui lòng đăng nhập bằng số điện thoại trước khi gửi yêu cầu nâng cấp quyền.');
       return;
     }
 
     if (!organization.trim() || !reason.trim()) {
-      alert('Vui lòng điền tên tổ chức và lý do tiếp cận dữ liệu nghiên cứu.');
+      setSubmitError('Vui lòng điền tên tổ chức và lý do tiếp cận dữ liệu nghiên cứu.');
       return;
     }
 
@@ -115,7 +117,7 @@ export const AccessMatrixModal: React.FC<AccessMatrixModalProps> = ({ isOpen, on
       await requestElevation(requestedRole, organization, reason);
       setSubmitSuccess(true);
     } catch (err: any) {
-      alert('Lỗi gửi yêu cầu: ' + err.message);
+      setSubmitError('Lỗi gửi yêu cầu: ' + (err.message || 'Không xác định'));
     } finally {
       setIsSubmitting(false);
     }
@@ -326,6 +328,13 @@ export const AccessMatrixModal: React.FC<AccessMatrixModalProps> = ({ isOpen, on
                   <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs">
                     Dành cho các cán bộ khuyến nông, giảng viên, sinh viên hoặc nghiên cứu viên thuộc Viện BVTV, Viện ASIR, Chi cục Trồng trọt các tỉnh cần tiếp cận ma trận đối chuẩn và xuất dữ liệu CSV.
                   </div>
+
+                  {submitError && (
+                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs font-semibold flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-700 shrink-0" />
+                      <span>{submitError}</span>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block font-bold text-stone-700 mb-1">

@@ -23,10 +23,34 @@ export async function fetchDiseases(): Promise<DiseaseRecord[]> {
       return DEFAULT_DISEASES;
     }
 
+    const baselineMap = new Map(DEFAULT_DISEASES.map((d) => [d.id, d]));
     const items: DiseaseRecord[] = [];
+    const seenIds = new Set<string>();
+
     snap.forEach((docSnap) => {
-      items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      const remote = { id: docSnap.id, ...(docSnap.data() as any) } as DiseaseRecord;
+      seenIds.add(docSnap.id);
+      const baseline = baselineMap.get(docSnap.id);
+
+      if (baseline) {
+        const remoteTime = Date.parse(remote.updatedAt || '') || 0;
+        const baselineTime = Date.parse(baseline.updatedAt || '') || 0;
+        // Upgrade stale seeded baseline docs automatically so all users see accurate facts & photos
+        if (baselineTime >= remoteTime || !remote.imageSource) {
+          items.push({ ...remote, ...baseline });
+          return;
+        }
+      }
+      items.push(remote);
     });
+
+    // Include newly added baseline entries (e.g., citrus_psyllid) even before an admin clicks sync
+    for (const baseline of DEFAULT_DISEASES) {
+      if (!seenIds.has(baseline.id)) {
+        items.push(baseline);
+      }
+    }
+
     return items;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, COLLECTION_NAME);

@@ -46,24 +46,32 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onStartScan, onNav
       id: 'citrus',
       name: 'Cây Cam, Bưởi',
       icon: '🍊',
-      desc: 'Xem bệnh vàng lá, loét quả, ghẻ lá',
+      desc: 'Vàng lá gân xanh, rầy chổng cánh, loét, ghẻ, sâu vẽ bùa...',
       cardStyle: 'border-amber-200 hover:border-amber-400',
     },
     {
       id: 'rice',
       name: 'Cây Lúa',
       icon: '🌾',
-      desc: 'Xem bệnh đạo ôn, bạc lá, khô vằn',
+      desc: 'Đạo ôn, bạc lá, khô vằn, rầy nâu, vàng lùn, sâu cuốn lá...',
       cardStyle: 'border-emerald-200 hover:border-emerald-400',
     },
     {
       id: 'peanut',
       name: 'Cây Lạc (Đậu)',
       icon: '🥜',
-      desc: 'Xem bệnh đốm lá, gỉ sắt, héo rũ',
+      desc: 'Đốm lá, gỉ sắt, héo xanh, thối gốc mốc trắng, sâu khoang...',
       cardStyle: 'border-orange-200 hover:border-orange-400',
     },
   ];
+
+  const currentMonth = new Date().getMonth() + 1;
+  const seasonalReminder =
+    currentMonth >= 11 || currentMonth <= 3
+      ? 'Trời se lạnh và sáng sớm hay có sương ẩm (vụ Đông Xuân), bác nhớ thăm ruộng lúa để phát hiện sớm bệnh đạo ôn và soi mặt dưới lộc non cam tìm rầy chổng cánh, sâu vẽ bùa nhé.'
+      : currentMonth >= 4 && currentMonth <= 7
+      ? 'Thời tiết nắng nóng xen mưa dông (vụ Hè Thu), bác chú ý rầy nâu, khô vằn ở gốc lúa và kiểm tra bệnh gỉ sắt, héo xanh vi khuẩn trên ruộng lạc nhé.'
+      : 'Đang mùa mưa ẩm kéo dài, bác nhớ khơi thông rãnh thoát nước cho vườn cam tránh chảy gôm xì mủ, loét quả và đề phòng thối gốc mốc trắng trên cây lạc nhé.';
 
   return (
     <div className="space-y-8">
@@ -168,7 +176,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onStartScan, onNav
       <section className="bg-amber-50 border border-amber-200 rounded-2xl p-4 sm:p-5 flex items-start gap-3">
         <Sun className="w-6 h-6 text-amber-700 shrink-0 mt-0.5" />
         <p className="text-base text-stone-800 leading-relaxed">
-          <strong>Nhắc nhẹ mùa này:</strong> Sáng sớm có nhiều sương ẩm, bác nhớ thăm vườn thường xuyên để phát hiện sớm bệnh đạo ôn trên lúa và vàng lá trên cam nhé.
+          <strong>Nhắc nhẹ tháng {currentMonth}:</strong> {seasonalReminder}
         </p>
       </section>
     </div>

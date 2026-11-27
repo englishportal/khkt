@@ -218,7 +218,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                   className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-800 transition-colors cursor-pointer min-h-[42px] whitespace-nowrap"
                 >
                   <User className="w-4 h-4" />
-                  <span>Đăng nhập 1 chạm</span>
+                  <span>Đăng nhập</span>
                 </button>
               )}
             </div>

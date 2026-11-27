@@ -1,35 +1,47 @@
 import React, { useState, useEffect } from 'react';
-import { X, Phone } from 'lucide-react';
+import { X, Phone, User, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const AuthModal: React.FC = () => {
   const {
     isAuthModalOpen,
     closeAuthModal,
-    quickSignInPhone,
+    signInWithPhone,
   } = useAuth();
 
   const [phone, setPhone] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isAuthModalOpen) {
       setPhone('');
+      setDisplayName('');
+      setIsSubmitting(false);
       setError(null);
     }
   }, [isAuthModalOpen]);
 
   if (!isAuthModalOpen) return null;
 
-  const handlePhoneLogin = (e: React.FormEvent) => {
+  const handlePhoneLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const digits = phone.replace(/\D/g, '');
     if (digits.length < 9 || digits.length > 11) {
-      setError('Bác vui lòng nhập đúng số điện thoại (9 - 11 chữ số) nhé.');
+      setError('Bác vui lòng nhập đúng số điện thoại (9 – 11 chữ số) nhé.');
       return;
     }
+
     setError(null);
-    quickSignInPhone(phone.trim());
+    setIsSubmitting(true);
+    try {
+      await signInWithPhone(phone.trim(), displayName.trim() || undefined);
+    } catch (err: any) {
+      setError(err?.message || 'Chưa đăng nhập được. Bác thử bấm lại nhé.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -38,7 +50,7 @@ export const AuthModal: React.FC = () => {
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-200 flex items-center justify-between">
           <h2 className="text-xl sm:text-2xl font-bold text-stone-900">
-            Đăng nhập / Lưu hồ sơ
+            Đăng nhập bằng số điện thoại
           </h2>
           <button
             type="button"
@@ -51,17 +63,23 @@ export const AuthModal: React.FC = () => {
         </div>
 
         <div className="p-6 space-y-5">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-start gap-2.5 text-sm sm:text-base text-stone-800">
+            <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
+            <span>
+              Chỉ cần nhập đúng <strong>số điện thoại</strong>. Sau này bác sang điện thoại hay máy tính khác nhập lại đúng số này, toàn bộ lịch sử khám bệnh và ảnh cũ sẽ tự hiện đầy đủ.
+            </span>
+          </div>
+
           {error && (
             <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-base font-medium">
               {error}
             </div>
           )}
 
-          {/* Direct Phone Sign-in (no Google, no OTP code, no password) */}
           <form onSubmit={handlePhoneLogin} className="space-y-4">
             <div>
-              <label className="block text-lg font-bold text-stone-900 mb-2">
-                Nhập số điện thoại của bác
+              <label className="block text-base sm:text-lg font-bold text-stone-900 mb-1.5">
+                Số điện thoại của bác *
               </label>
               <div className="relative">
                 <Phone className="w-5 h-5 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -78,17 +96,40 @@ export const AuthModal: React.FC = () => {
               </div>
             </div>
 
+            <div>
+              <label className="block text-sm font-bold text-stone-700 mb-1.5">
+                Tên của bác (không bắt buộc)
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Ví dụ: Bác Hùng"
+                  className="w-full min-h-[48px] pl-10 pr-4 py-2.5 rounded-xl border border-stone-300 text-base focus:outline-none focus:border-emerald-700"
+                />
+              </div>
+            </div>
+
             <button
               type="submit"
-              className="w-full min-h-[58px] rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-[0.99] text-white text-lg font-bold transition-all cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full min-h-[56px] rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-[0.99] text-white text-lg font-bold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
             >
-              Đăng nhập ngay
+              {isSubmitting ? (
+                <>
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  <span>Đang đồng bộ dữ liệu...</span>
+                </>
+              ) : (
+                <span>Đăng nhập ngay</span>
+              )}
             </button>
           </form>
 
-          {/* Friendly Note at Bottom */}
-          <p className="pt-3 border-t border-stone-200 text-sm sm:text-base text-stone-600 leading-relaxed text-center">
-            Bác không cần đăng nhập vẫn dùng được bình thường. Đăng nhập giúp lưu lại lịch sử khám bệnh không bị mất khi đổi điện thoại.
+          <p className="pt-2 border-t border-stone-200 text-sm text-stone-600 text-center">
+            Không cần mật khẩu, không cần mã xác nhận, không cần Google.
           </p>
         </div>
       </div>
