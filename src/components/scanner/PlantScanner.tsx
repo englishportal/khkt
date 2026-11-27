@@ -9,6 +9,7 @@ import {
   BookOpen,
   ShieldAlert,
   HelpCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { CropType, PlantPart, DiagnosisResult, ConfidenceLevel } from '../../types';
 import { runServerDiagnosis, saveDiagnosisRecord } from '../../services/diagnosisService';
@@ -435,10 +436,7 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
     setAnalysisError(null);
     setResult(null);
     setRefImgError(false);
-
-    setScanStepMessage('Đang kiểm tra độ rõ của ảnh...');
-    const step1 = setTimeout(() => setScanStepMessage('Đang đối chiếu loại cây và dấu hiệu trên lá...'), 900);
-    const step2 = setTimeout(() => setScanStepMessage('Đang tìm cách xử lý phù hợp cho bác...'), 2200);
+    setScanStepMessage('Bác sĩ AI đang kiểm tra...');
 
     try {
       const visualMetrics = await extractVisualMetrics(imagePreview, imageFileName, sourceSampleCrop);
@@ -450,9 +448,6 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
         mimeType,
         visualMetrics
       );
-
-      clearTimeout(step1);
-      clearTimeout(step2);
 
       setResult(diagnosisResult);
 
@@ -485,7 +480,7 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
     setAnalysisError(null);
     setResult(null);
     setRefImgError(false);
-    setScanStepMessage(`Đang chuyển sang khám ${getCropLabel(newCrop)}...`);
+    setScanStepMessage('Bác sĩ AI đang kiểm tra...');
 
     try {
       const visualMetrics = await extractVisualMetrics(imagePreview, imageFileName, newCrop);
@@ -800,12 +795,26 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
               {isAnalyzing ? (
                 <>
                   <RefreshCw className="w-5 h-5 animate-spin shrink-0" />
-                  <span>{scanStepMessage || 'Đang kiểm tra ảnh...'}</span>
+                  <span>{scanStepMessage || 'Bác sĩ AI đang kiểm tra...'}</span>
                 </>
               ) : (
                 <span>XEM BỆNH CỦA CÂY NGAY</span>
               )}
             </button>
+
+            {isAnalyzing && (
+              <div className="p-5 rounded-2xl bg-emerald-50 border-2 border-emerald-200 flex items-center gap-4">
+                <RefreshCw className="w-7 h-7 animate-spin text-emerald-700 shrink-0" />
+                <div>
+                  <p className="text-lg font-bold text-emerald-950">
+                    Bác sĩ AI đang kiểm tra...
+                  </p>
+                  <p className="text-base text-stone-700">
+                    Đang xem kỹ ảnh chụp và tra cứu Google đối chiếu bệnh cây cho bác, vui lòng chờ vài giây nhé.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-5">
@@ -878,11 +887,33 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
         )}
       </section>
 
-      {/* Result Area */}
-      {result && (
+      {/* Result Area (strictly hidden when no image uploaded) */}
+      {imagePreview && result && (
         <section className="space-y-5">
-          {/* Case 1: Wrong Crop Selected */}
-          {!result.selectedCropMatches ? (
+          {/* Case 0: Not a plant photo */}
+          {!result.isPlantImage ? (
+            <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-7 h-7 text-amber-700 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h2 className="text-xl sm:text-2xl font-bold text-amber-950">
+                    Ảnh này chưa thấy lá hoặc thân cây!
+                  </h2>
+                  <p className="text-base text-stone-800 leading-relaxed">
+                    {result.symptoms?.[0] || 'Bác vui lòng chụp lại sát vào lá, thân hoặc quả cây bị bệnh để Bác sĩ AI xem chính xác nhé.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={startCamera}
+                className="w-full sm:w-auto min-h-[52px] px-5 py-3 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-base font-bold flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Camera className="w-5 h-5" />
+                <span>Chụp lại ảnh cây trồng</span>
+              </button>
+            </div>
+          ) : !result.selectedCropMatches ? (
             <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-6 space-y-4">
               <div className="flex items-start gap-3">
                 <ShieldAlert className="w-7 h-7 text-amber-700 shrink-0 mt-0.5" />
@@ -990,6 +1021,17 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
                     </div>
                   </div>
 
+                  {result.symptoms.length > 0 && (
+                    <div className="bg-stone-50 rounded-xl border border-stone-200 p-4 space-y-2">
+                      <h3 className="text-lg font-bold text-stone-900">Dấu hiệu nhận biết trên ảnh:</h3>
+                      <ul className="list-disc list-inside space-y-1.5 text-base text-stone-800">
+                        {result.symptoms.slice(0, 3).map((s, idx) => (
+                          <li key={idx}>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {result.recommendations.length > 0 && (
                     <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-4 space-y-2">
                       <h3 className="text-lg font-bold text-emerald-950">Cách chăm sóc giữ cây khỏe:</h3>
@@ -998,6 +1040,26 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
                           <li key={idx}>{rec}</li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+
+                  {result.referenceLinks && result.referenceLinks.length > 0 && (
+                    <div className="bg-stone-50 rounded-xl border border-stone-200 p-4 space-y-2">
+                      <h3 className="text-base font-bold text-stone-900">Nguồn tham khảo uy tín từ Google:</h3>
+                      <div className="flex flex-col gap-1.5">
+                        {result.referenceLinks.slice(0, 2).map((link, idx) => (
+                          <a
+                            key={idx}
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-base font-semibold text-emerald-800 hover:underline break-all"
+                          >
+                            <ExternalLink className="w-4 h-4 shrink-0" />
+                            <span>{link.title}</span>
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   )}
 
@@ -1016,15 +1078,33 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
 
             /* Case 4: Disease Found */
             const badge = getConfidenceText(primaryDiag?.confidenceLevel || 'medium');
-            const matchedRef =
-              DEFAULT_DISEASES.find(
-                (d) =>
-                  d.id === primaryDiag?.diseaseId ||
-                  (primaryDiag?.diseaseName &&
-                    d.vietnameseName.toLowerCase().includes(primaryDiag.diseaseName.toLowerCase())) ||
-                  (primaryDiag?.diseaseName &&
-                    primaryDiag.diseaseName.toLowerCase().includes(d.vietnameseName.toLowerCase()))
-              ) || DEFAULT_DISEASES.find((d) => d.cropType === selectedCrop);
+            const diagNameLower = (primaryDiag?.diseaseName || '').toLowerCase();
+            const diagIdLower = (primaryDiag?.diseaseId || '').toLowerCase();
+            const matchedRefId =
+              selectedCrop === 'citrus' &&
+              (diagIdLower.includes('greening') ||
+                diagIdLower.includes('hlb') ||
+                diagNameLower.includes('greening') ||
+                diagNameLower.includes('hlb') ||
+                diagNameLower.includes('vàng lá gân xanh'))
+                ? 'citrus_greening'
+                : selectedCrop === 'rice' &&
+                  (diagIdLower.includes('blast') ||
+                    diagIdLower.includes('dao_on') ||
+                    diagNameLower.includes('đạo ôn'))
+                ? 'rice_blast'
+                : selectedCrop === 'peanut' &&
+                  (diagIdLower.includes('spot') ||
+                    diagIdLower.includes('dom_la') ||
+                    diagIdLower.includes('dom_nau') ||
+                    diagNameLower.includes('đốm lá') ||
+                    diagNameLower.includes('đốm nâu') ||
+                    diagNameLower.includes('đốm đen'))
+                ? 'peanut_leaf_spot'
+                : null;
+            const matchedRef = matchedRefId
+              ? DEFAULT_DISEASES.find((d) => d.id === matchedRefId)
+              : undefined;
 
             return (
               <div className="bg-white rounded-2xl border-2 border-emerald-200 p-5 sm:p-7 space-y-6">
@@ -1047,7 +1127,7 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
                 {(result.symptoms.length > 0 || (primaryDiag?.evidence && primaryDiag.evidence.length > 0)) && (
                   <div className="space-y-2">
                     <h3 className="text-lg font-bold text-stone-900">
-                      Dấu hiệu nhìn thấy trên ảnh
+                      Dấu hiệu nhận biết trên ảnh
                     </h3>
                     <ul className="list-disc list-inside space-y-1.5 text-base text-stone-800 bg-stone-50 p-4 rounded-xl border border-stone-200">
                       {(primaryDiag?.evidence?.length ? primaryDiag.evidence : result.symptoms).map((item, idx) => (
@@ -1057,17 +1137,52 @@ export const PlantScanner: React.FC<PlantScannerProps> = ({
                   </div>
                 )}
 
+                {/* Causes */}
+                {result.causes && (
+                  <div className="bg-amber-50/70 rounded-2xl border border-amber-200 p-4 sm:p-5 space-y-2">
+                    <h3 className="text-lg font-bold text-stone-900">
+                      Nguyên nhân gây bệnh
+                    </h3>
+                    <p className="text-base text-stone-800 leading-relaxed">
+                      {result.causes}
+                    </p>
+                  </div>
+                )}
+
                 {/* What to do right now */}
                 {result.recommendations.length > 0 && (
                   <div className="bg-emerald-50 rounded-2xl border border-emerald-200 p-4 sm:p-5 space-y-3">
                     <h3 className="text-lg font-bold text-emerald-950">
-                      Bác nên làm gì ngay
+                      Cách xử lý an toàn cho bác
                     </h3>
                     <ol className="list-decimal list-inside space-y-2 text-base text-stone-900 leading-relaxed">
                       {result.recommendations.map((rec, idx) => (
                         <li key={idx}>{rec}</li>
                       ))}
                     </ol>
+                  </div>
+                )}
+
+                {/* Reference Links from Google Search */}
+                {result.referenceLinks && result.referenceLinks.length > 0 && (
+                  <div className="bg-stone-50 rounded-2xl border border-stone-200 p-4 sm:p-5 space-y-2.5">
+                    <h3 className="text-base font-bold text-stone-900">
+                      Nguồn tham khảo uy tín từ Google
+                    </h3>
+                    <div className="flex flex-col gap-2">
+                      {result.referenceLinks.slice(0, 2).map((link, idx) => (
+                        <a
+                          key={idx}
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-base font-semibold text-emerald-800 hover:text-emerald-950 hover:underline break-all"
+                        >
+                          <ExternalLink className="w-4 h-4 shrink-0" />
+                          <span>{link.title}</span>
+                        </a>
+                      ))}
+                    </div>
                   </div>
                 )}
 

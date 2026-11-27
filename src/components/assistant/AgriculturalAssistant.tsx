@@ -5,6 +5,7 @@ import {
   User,
   RefreshCw,
   X,
+  ExternalLink,
 } from 'lucide-react';
 import { ChatMessage } from '../../types';
 
@@ -87,27 +88,29 @@ export const AgriculturalAssistant: React.FC<AgriculturalAssistantProps> = ({
         }),
       });
 
+      const data = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        throw new Error('Không kết nối được với máy chủ.');
+        throw new Error(data.error || 'Không kết nối được với Bác sĩ AI.');
       }
 
-      const data = await response.json();
       setMessages((prev) => [
         ...prev,
         {
           id: `bot_${Date.now()}`,
           sender: 'assistant',
           content: data.reply || 'Bác hỏi rõ hơn một chút để tôi trả lời chính xác nhé.',
+          sources: Array.isArray(data.sources) ? data.sources : [],
           timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
-    } catch {
+    } catch (err: any) {
       setMessages((prev) => [
         ...prev,
         {
           id: `bot_err_${Date.now()}`,
           sender: 'assistant',
-          content: 'Mạng đang hơi chập chờn, bác bấm gửi lại giúp tôi nhé.',
+          content: err?.message || 'Mạng đang hơi chập chờn, bác bấm gửi lại giúp tôi nhé.',
           timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -172,6 +175,25 @@ export const AgriculturalAssistant: React.FC<AgriculturalAssistantProps> = ({
                   }`}
                 >
                   <div>{msg.content}</div>
+                  {isBot && msg.sources && msg.sources.length > 0 && (
+                    <div className="mt-3 pt-2.5 border-t border-stone-200 space-y-1.5">
+                      <p className="text-xs font-bold text-stone-600">Nguồn tham khảo:</p>
+                      <div className="flex flex-col gap-1">
+                        {msg.sources.slice(0, 2).map((src, idx) => (
+                          <a
+                            key={idx}
+                            href={src.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-800 hover:text-emerald-950 hover:underline break-all"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                            <span>{src.title}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className={`mt-2 text-xs text-right ${isBot ? 'text-stone-500' : 'text-emerald-100'}`}>
                     {msg.timestamp}
                   </div>

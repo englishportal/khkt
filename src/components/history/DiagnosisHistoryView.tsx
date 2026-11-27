@@ -4,6 +4,7 @@ import {
   X,
   Camera,
   MessageCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { DiagnosisHistoryItem, CropType } from '../../types';
 import { fetchUserDiagnoses, deleteDiagnosisRecord } from '../../services/diagnosisService';
@@ -225,6 +226,13 @@ export const DiagnosisHistoryView: React.FC<DiagnosisHistoryViewProps> = ({
                 </div>
               )}
 
+              {viewItem.assessment?.causes && (
+                <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200 space-y-1.5">
+                  <p className="font-bold text-lg text-stone-900">Nguyên nhân:</p>
+                  <p>{viewItem.assessment.causes}</p>
+                </div>
+              )}
+
               {viewItem.assessment?.recommendations && viewItem.assessment.recommendations.length > 0 && (
                 <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 space-y-2">
                   <p className="font-bold text-lg text-emerald-950">Cách xử lý nên làm:</p>
@@ -233,6 +241,26 @@ export const DiagnosisHistoryView: React.FC<DiagnosisHistoryViewProps> = ({
                       <li key={idx}>{r}</li>
                     ))}
                   </ol>
+                </div>
+              )}
+
+              {viewItem.assessment?.referenceLinks && viewItem.assessment.referenceLinks.length > 0 && (
+                <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 space-y-2">
+                  <p className="font-bold text-base text-stone-900">Nguồn tham khảo uy tín:</p>
+                  <div className="flex flex-col gap-1.5">
+                    {viewItem.assessment.referenceLinks.slice(0, 2).map((link, idx) => (
+                      <a
+                        key={idx}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-emerald-800 hover:underline font-semibold break-all"
+                      >
+                        <ExternalLink className="w-4 h-4 shrink-0" />
+                        <span>{link.title}</span>
+                      </a>
+                    ))}
+                  </div>
                 </div>
               )}
 

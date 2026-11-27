@@ -21,6 +21,11 @@ export interface PossibleDiagnosis {
   confidenceLevel: ConfidenceLevel;
 }
 
+export interface ReferenceLink {
+  title: string;
+  url: string;
+}
+
 export interface DiagnosisResult {
   isPlantImage: boolean;
   cropDetected: string;
@@ -28,12 +33,14 @@ export interface DiagnosisResult {
   imageQuality: ImageQuality;
   qualityIssues: string[];
   symptoms: string[];
+  causes?: string;
   possibleDiagnoses: PossibleDiagnosis[];
   alternativeCauses: string[];
   severityAssessment: SeverityAssessment;
   needsMoreImages: boolean;
   additionalImageInstructions: string[];
   recommendations: string[];
+  referenceLinks?: ReferenceLink[];
   expertVerificationRecommended: boolean;
   disclaimer: string;
 }
@@ -117,6 +124,7 @@ export interface ChatMessage {
   sender: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  sources?: ReferenceLink[];
   contextDiagnosis?: {
     crop: string;
     suspectedDisease: string;
